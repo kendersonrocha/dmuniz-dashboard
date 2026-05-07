@@ -1,16 +1,14 @@
-// build.js — atualiza index.html com dados frescos do ClickUp
-// Uso: node build.js
+// scripts/refresh-data.js
+// Atualiza public/data.json com dados frescos do ClickUp.
+// Uso: npm run refresh   (ou: node scripts/refresh-data.js)
 //
-// O que faz:
-//   1. Chama API do ClickUp e salva data.json
-//   2. Injeta o JSON dentro do index.html (substitui o placeholder /*INJECT_DATA*/null/*END*/)
-//   3. Resultado: index.html self-contained, abre direto no browser ou hospeda em qualquer lugar
+// Roda local OU no GitHub Action (cron).
 
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const TOKEN = 'pk_102677809_DOMWP0RIY0ONNLSV1OHKP4CCEFSP64XB';
+const TOKEN = process.env.CLICKUP_TOKEN || 'pk_102677809_DOMWP0RIY0ONNLSV1OHKP4CCEFSP64XB';
 const WORKSPACE_ID = '90133119220';
 
 const SPACE_NAMES = {
@@ -31,9 +29,9 @@ function detectPerson(name) {
   return null;
 }
 
-function fetchClickUp(path) {
+function fetchClickUp(p) {
   return new Promise((resolve, reject) => {
-    https.get(`https://api.clickup.com/api/v2${path}`, {
+    https.get(`https://api.clickup.com/api/v2${p}`, {
       headers: { 'Authorization': TOKEN }
     }, (res) => {
       let data = '';
@@ -47,7 +45,7 @@ function fetchClickUp(path) {
 }
 
 (async () => {
-  console.log('1️⃣ Puxando tasks do ClickUp...');
+  console.log('1️⃣  Puxando tasks do ClickUp...');
   let allTasks = [];
   for (let page = 0; page < 10; page++) {
     const data = await fetchClickUp(`/team/${WORKSPACE_ID}/task?include_closed=true&subtasks=true&page=${page}`);
@@ -58,7 +56,7 @@ function fetchClickUp(path) {
   }
   console.log(`   ✓ ${allTasks.length} tasks recebidas`);
 
-  console.log('2️⃣ Slim down + detect person...');
+  console.log('2️⃣  Slim down + detect person...');
   const slim = allTasks.map(t => {
     const sp_id = (t.space || {}).id || '';
     return {
@@ -80,22 +78,11 @@ function fetchClickUp(path) {
   });
 
   const payload = { tasks: slim, fetched_at: new Date().toISOString() };
-  const dataPath = path.join(__dirname, 'data.json');
-  fs.writeFileSync(dataPath, JSON.stringify(payload, null, 0));
-  console.log(`   ✓ data.json salvo (${(fs.statSync(dataPath).size / 1024).toFixed(1)} KB)`);
-
-  console.log('3️⃣ Injetando no index.html...');
-  const htmlPath = path.join(__dirname, 'index.html');
-  let html = fs.readFileSync(htmlPath, 'utf8');
-  const injected = html.replace(
-    /\/\*INJECT_DATA\*\/[\s\S]*?\/\*END\*\//,
-    '/*INJECT_DATA*/' + JSON.stringify(payload) + '/*END*/'
-  );
-  fs.writeFileSync(htmlPath, injected);
-  console.log(`   ✓ index.html atualizado`);
-
+  const dataPath = path.join(__dirname, '..', 'public', 'data.json');
+  fs.writeFileSync(dataPath, JSON.stringify(payload));
+  console.log(`   ✓ public/data.json salvo (${(fs.statSync(dataPath).size / 1024).toFixed(1)} KB)`);
   console.log('');
-  console.log('✅ PRONTO! Abra index.html no browser ou faça push pra Vercel/GitHub Pages.');
+  console.log('✅ Refresh completo. Pra deploy: git add public/data.json && git commit -m "refresh data" && git push');
 })().catch(err => {
   console.error('❌ Erro:', err);
   process.exit(1);
